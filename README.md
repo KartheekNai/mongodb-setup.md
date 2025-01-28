@@ -1,104 +1,171 @@
 # MongoDB Setup and Connection Guide
 
-This guide outlines the process of installing, configuring, and connecting MongoDB on an AWS EC2 instance, including troubleshooting steps and solutions for issues encountered during the setup.
+This guide provides step-by-step instructions to set up MongoDB on an AWS EC2 instance, configure it for external access, and resolve any issues encountered during the process.
 
 ## Prerequisites
 - AWS EC2 instance running Ubuntu.
-- MongoDB Compass installed on your local machine (optional).
-- Administrative access to the EC2 instance.
+- SSH access to the EC2 instance.
+- MongoDB Compass installed locally (optional for GUI-based access).
 
-## Steps to Install and Configure MongoDB
+---
 
-### Step 1: Update System Packages
-Ensure your system is up-to-date:
+## Steps
+
+### Step 1: Install MongoDB
 ```bash
 sudo apt update
-```
-
-### Step 2: Install MongoDB
-Install MongoDB using the following command:
-```bash
 sudo apt install -y mongodb
 ```
 
-### Step 3: Start MongoDB Service
-Start the MongoDB service:
+### Step 2: Start MongoDB Service
 ```bash
 sudo systemctl start mongod
 ```
 
-### Step 4: Verify MongoDB Service Status
-Check that MongoDB is running:
+### Step 3: Verify MongoDB Service Status
 ```bash
 sudo systemctl status mongod
 ```
+Ensure the service is active. If it is not, check the logs for errors:
+```bash
+sudo tail -f /var/log/mongodb/mongod.log
+```
 
-### Step 5: Modify MongoDB Configuration
-To allow external connections, edit the configuration file:
+### Step 4: Configure MongoDB to Allow External Connections
+Edit the MongoDB configuration file:
 ```bash
 sudo nano /etc/mongod.conf
 ```
-Update the `bindIp` parameter under the `net` section to `0.0.0.0`:
+Update the `bindIp` value to `0.0.0.0` to allow connections from any IP:
 ```yaml
 net:
   bindIp: 0.0.0.0
 ```
-Save the file and restart the MongoDB service:
+
+Save the changes and restart MongoDB:
 ```bash
 sudo systemctl restart mongod
 ```
 
-### Step 6: Adjust AWS Security Group Rules
-- Log in to the AWS Management Console.
-- Navigate to the Security Group associated with your EC2 instance.
-- Add an inbound rule to allow traffic on port `27017` from your IP address or a trusted IP range.
+### Step 5: Set Up a MongoDB User with Authentication
+1. Connect to MongoDB shell:
+   ```bash
+   mongo
+   ```
+2. Create an admin user:
+   ```javascript
+   use admin
+   db.createUser({
+     user: "admin",
+     pwd: "secure_password",
+     roles: [ { role: "userAdminAnyDatabase", db: "admin" } ]
+   });
+   ```
+3. Enable authentication by editing the configuration file:
+   ```bash
+   sudo nano /etc/mongod.conf
+   ```
+   Uncomment or add the following line under `security`:
+   ```yaml
+   security:
+     authorization: enabled
+   ```
+4. Restart the MongoDB service:
+   ```bash
+   sudo systemctl restart mongod
+   ```
 
-### Step 7: Create a MongoDB User for Authentication
-Access the MongoDB shell:
+### Step 6: Allow Inbound Traffic on Port 27017 in AWS Security Groups
+- Navigate to your EC2 instance's Security Group in the AWS Management Console.
+- Edit the inbound rules to allow traffic on port `27017` for your IP or range of trusted IPs.
+
+### Step 7: Verify Permissions
+Ensure the data directory has the correct ownership and permissions:
 ```bash
-mongo
+sudo chown -R mongodb:mongodb /var/lib/mongodb
+sudo chmod -R 700 /var/lib/mongodb
 ```
-Switch to the `admin` database:
-```bash
-use admin
-```
-Create an administrative user:
-```javascript
-db.createUser({
-  user: "admin",
-  pwd: "securepassword",
-  roles: [ { role: "userAdminAnyDatabase", db: "admin" } ]
-})
-```
-Enable authentication by editing the MongoDB configuration file:
-```bash
-sudo nano /etc/mongod.conf
-```
-Uncomment or add the following under the `security` section:
-```yaml
-security:
-  authorization: enabled
-```
-Restart MongoDB for changes to take effect:
+If permissions are incorrect, restart MongoDB:
 ```bash
 sudo systemctl restart mongod
 ```
 
-### Step 8: Connect MongoDB to Compass
-Open MongoDB Compass and use the connection string:
-```text
-mongodb://<admin>:<securepassword>@<ec2-public-ip>:27017/?authSource=admin
+### Step 8: Connect Using MongoDB Compass
+- Open MongoDB Compass.
+- Use the connection string:
+  ```
+  mongodb://admin:secure_password@<ec2-public-ip>:27017
+  ```
+- Replace `<ec2-public-ip>` with your EC2 instance's public IP.
+
+### Step 9: Remove MongoDB (if required)
+To remove MongoDB completely, execute:
+```bash
+sudo apt purge -y mongodb
+sudo rm -rf /var/lib/mongodb
+sudo rm -rf /etc/mongod.conf
 ```
-Replace `<admin>` with your username, `<securepassword>` with your password, and `<ec2-public-ip>` with the public IP of your EC2 instance.
+
+---
 
 ## Troubleshooting
 
-### Problem: MongoDB Service Fails to Start
-**Solution:** Check the MongoDB logs for errors:
+### Problem 1: MongoDB Service Fails to Start
+- Check logs:
+  ```bash
+  sudo tail -f /var/log/mongodb/mongod.log
+  ```
+- Verify permissions of the data directory.
+
+### Problem 2: Authentication Fails
+- Ensure the correct username and password are used.
+- Verify the `authorization` setting in `mongod.conf` is enabled.
+
+### Problem 3: Connection Refused in Compass
+- Verify port `27017` is open in AWS Security Groups.
+- Confirm the `bindIp` is set to `0.0.0.0` in `mongod.conf`.
+
+---
+
+## Commands Used
 ```bash
+# Update system packages
+sudo apt update
+
+# Install MongoDB
+sudo apt install -y mongodb
+
+# Start MongoDB service
+sudo systemctl start mongod
+
+# Check MongoDB service status
+sudo systemctl status mongod
+
+# Edit MongoDB configuration
+sudo nano /etc/mongod.conf
+
+# Restart MongoDB service
+sudo systemctl restart mongod
+
+# Check MongoDB logs for troubleshooting
 sudo tail -f /var/log/mongodb/mongod.log
+
+# Set permissions for the data directory
+sudo chown -R mongodb:mongodb /var/lib/mongodb
+sudo chmod -R 700 /var/lib/mongodb
+
+# Remove MongoDB completely
+sudo apt purge -y mongodb
+sudo rm -rf /var/lib/mongodb
+sudo rm -rf /etc/mongod.conf
 ```
-Ensure that the configuration file syntax is correct and that necessary permissions are in place.
+
+---
+
+## Notes
+- Always restrict access to trusted IPs in AWS Security Groups.
+- Use strong passwords for authentication.
+- Regularly monitor logs for potential issues.
 
 ### Problem: Unable to Connect to MongoDB Remotely
 **Solution:**
